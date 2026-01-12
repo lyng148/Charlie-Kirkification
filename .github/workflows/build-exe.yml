@@ -1,0 +1,50 @@
+name: Build EXE
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ created ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r charlie-kirk-project/requirements.txt
+
+    - name: Build EXE with PyInstaller
+      run: |
+        cd charlie-kirk-project
+        pyinstaller charlie-kirk.spec
+
+    - name: Upload EXE artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Charlie-Kirkification-Windows
+        path: charlie-kirk-project/dist/Charlie-Kirkification.exe
+        retention-days: 30
+
+    - name: Upload to Release (if release)
+      if: github.event_name == 'release'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: charlie-kirk-project/dist/Charlie-Kirkification.exe
+        asset_name: Charlie-Kirkification.exe
+        asset_content_type: application/vnd.microsoft.portable-executable

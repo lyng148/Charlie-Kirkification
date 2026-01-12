@@ -1,0 +1,8 @@
+{
+    "timer": 0.5,
+    "iris_threshold": 0.35,
+    "spam_loops": 4,
+    "sound_enabled": true,
+    "sound_path": "./assets/we-are-charlie-kirk-song.mp3",
+    "start_minimized": false
+}

@@ -3,3 +3,5 @@ mediapipe==0.10.14
 pygame
 numpy
 Pillow
+pystray
+pyinstaller

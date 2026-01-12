@@ -1,88 +1,105 @@
-import cv2 # type: ignore
-import mediapipe as mp # type: ignore
-import pygame # pyright: ignore[reportMissingImports]
-import os
+import pystray
+from pystray import MenuItem as item
 from PIL import Image
+import threading
 from pathlib import Path
-import time
-
-pygame.mixer.init()
-sound = pygame.mixer.Sound(
-    "./assets/we-are-charlie-kirk-song.mp3"
-)
-
-face_mesh_landmarks = mp.solutions.face_mesh.FaceMesh(refine_landmarks=True)
-spam = Path("assets/spam")
-timer = 2.0
-timer_started = None
-playing = False
-
-cam = cv2.VideoCapture(0)
+from detector import CharlieKirkDetector
+from gui_settings import SettingsWindow
 
 
-while True:
-    ret, frame = cam.read()
-    frame = cv2.flip(frame, 1)
-    height, width, depth = frame.shape
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    processed_image = face_mesh_landmarks.process(rgb_frame)
-    face_landmark_points = processed_image.multi_face_landmarks
+class CharlieKirkApp:
+    def __init__(self):
+        self.detector = CharlieKirkDetector()
+        self.icon = None
+        self.is_detecting = False
 
-    if face_landmark_points:
-        one_face_landmark_points = face_landmark_points[0].landmark
-        
-        left = [one_face_landmark_points[145], one_face_landmark_points[159]]
-        for landmark_point in left:
-            x = int(landmark_point.x * width)
-            y = int(landmark_point.y * height)
-            print(x, y)
-            cv2.circle(frame, (x,y), 3, (0,255,255))
+        # Load config to check start minimized
+        if self.detector.config.get("start_minimized", False):
+            self.start_detection()
+
+    def create_icon_image(self):
+        """Load icon from assets folder"""
+        icon_path = Path("assets/icons/charlie-kirk-praying.png")
+        return Image.open(icon_path)
+
+    def start_detection(self, icon=None, item=None):
+        """Start face detection"""
+        if not self.is_detecting:
+            self.is_detecting = True
+            self.detector.reload_config()  # Reload config in case settings changed
+            self.detector.start_detection()
+            if self.icon:
+                self.icon.notify("Charlie-Kirkification is now watching you!", "Detection Started")
+            self.update_menu()
+
+    def stop_detection(self, icon=None, item=None):
+        """Stop face detection"""
+        if self.is_detecting:
+            self.is_detecting = False
+            self.detector.stop_detection()
+            if self.icon:
+                self.icon.notify("Detection stopped. You can doomscroll freely now.", "Detection Stopped")
+            self.update_menu()
+
+    def toggle_detection(self, icon=None, item=None):
+        """Toggle detection on/off"""
+        if self.is_detecting:
+            self.stop_detection()
+        else:
+            self.start_detection()
+
+    def open_settings(self, icon=None, item=None):
+        """Open settings window"""
+        settings = SettingsWindow(self.detector.config_path)
+        # Run in separate thread to avoid blocking
+        settings_thread = threading.Thread(target=settings.show, daemon=True)
+        settings_thread.start()
+
+    def quit_app(self, icon=None, item=None):
+        """Quit the application"""
+        self.stop_detection()
+        if self.icon:
+            self.icon.stop()
+
+    def update_menu(self):
+        """Update the tray menu"""
+        if self.icon:
+            self.icon.menu = self.create_menu()
+
+    def create_menu(self):
+        """Create system tray menu"""
+        if self.is_detecting:
+            toggle_text = "Stop Detection"
+        else:
+            toggle_text = "Start Detection"
+
+        return pystray.Menu(
+            item(toggle_text, self.toggle_detection),
+            item("Settings", self.open_settings),
+            pystray.Menu.SEPARATOR,
+            item("Quit", self.quit_app)
+        )
+
+    def run(self):
+        """Run the system tray application"""
+        icon_image = self.create_icon_image()
+        self.icon = pystray.Icon(
+            "charlie_kirk",
+            icon_image,
+            "Charlie-Kirkification",
+            menu=self.create_menu()
+        )
+
+        # Show notification on startup
+        self.icon.notify(
+            "Charlie-Kirkification is running in the system tray.\nRight-click the icon to access settings.",
+            "App Started"
+        )
+
+        # Run the icon (this blocks until quit)
+        self.icon.run()
 
 
-        right = [one_face_landmark_points[374], one_face_landmark_points[386]]
-        for landmark_point in right:
-                x = int(landmark_point.x * width)
-                y = int(landmark_point.y * height)
-                print(x, y)
-                cv2.circle(frame, (x,y), 3, (255,255,0))
-
-        l_iris = one_face_landmark_points[468]
-        r_iris = one_face_landmark_points[473]
-        
-        l_ratio = (l_iris.y  - left[1].y)  / (left[0].y  - left[1].y  + 1e-6)
-        r_ratio = (r_iris.y - right[1].y) / (right[0].y - right[1].y + 1e-6)
-
-        playing = False
-        current = time.time()
-
-        if ((l_ratio > 0.70) and (r_ratio > 0.70)):
-            if timer_started is None:
-                 timer_started = current
-
-            if (current - timer_started) >= timer:
-                if not playing:
-                    sound.play()
-                    for loop in range(4):
-                        for i in spam.iterdir():
-                            im = Image.open(i)
-                            im.show()
-                    
-                    playing = True
-
-            timer_started = True
-                
-        else: 
-             timer_started = None
-            
-        if not ((l_ratio > 0.70) and (r_ratio > 0.70)):
-             playing = False
-             
-
-    cv2.imshow('Face Detection', frame)
-    key = cv2.waitKey(100)
-
-    if key == 27:
-        break
-
-cam.release()
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    app = CharlieKirkApp()
+    app.run()
